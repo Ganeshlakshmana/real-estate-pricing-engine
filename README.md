@@ -1,91 +1,132 @@
-# Real Estate Price Prediction Engine
+# Real Estate Price Prediction 
 
-This repository contains a production-ready real estate valuation model and an optional FastAPI service.
+This repository contains a complete solution for the real estate price prediction
+take-home assessment.  
+The project is structured exactly as required in the challenge document and includes
+model training, preprocessing, documentation, and an optional FastAPI service.
 
-## Repository structure
+---
 
-```
-├── notebooks/
-│   └── analysis.ipynb
+## Repository Structure 
+
+The project follows the structure specified in the challenge:
+
 ├── src/
-│   ├── model.py
-│   ├── preprocessing.py
-│   └── api.py
+│ ├── model.py # Model training and evaluation code
+│ ├── preprocessing.py # Data loading, cleaning, and feature engineering
+│ └── api.py # FastAPI inference service (bonus)
+│
 ├── models/
-│   └── trained_model.joblib
-├── REPORT.md
-├── requirements.txt
-└── README.md
-```
+│ └── trained_model.pkl # Saved trained model artifact
+│
+├── REPORT.md # Detailed technical documentation and analysis
+├── requirements.txt # Python dependencies
+└── README.md # Setup and usage instructions
 
-## 1) Setup
+
+Each component is designed to be modular, reusable, and production-oriented.
+
+---
+
+## Description of Components
+
+### `src/model.py`
+- Implements the full model training pipeline
+- Performs time-aware train/validation/test split
+- Handles segment-specific modeling (MAIN vs LAND)
+- Trains CatBoost regression models
+- Evaluates performance and saves metrics
+- Persists trained models to `models/trained_model.pkl`
+
+---
+
+### `src/preprocessing.py`
+- Loads raw transaction data
+- Cleans and validates inputs
+- Performs feature engineering:
+  - Temporal features
+  - Area and size-based features
+  - Missing value indicators
+  - Leakage-safe aggregate price priors
+- Ensures consistency between training and inference
+
+---
+
+### `src/api.py` (Bonus)
+- Implements a FastAPI service for inference
+- Loads trained model artifacts
+- Recreates feature engineering at inference time
+- Exposes:
+  - `GET /health`
+  - `POST /api/v1/predict-price`
+- Returns prediction, confidence interval, and key factors
+
+---
+
+### `models/trained_model.pkl`
+- Serialized trained model(s)
+- Contains:
+  - MAIN and LAND segment models
+  - Feature schema
+  - Medians and preprocessing metadata
+  - Evaluation metrics
+
+---
+
+### `REPORT.md`
+- Full technical documentation of the solution
+- Covers:
+  - Model selection rationale
+  - Why alternative models (including neural networks) were rejected
+  - Trade-offs of the chosen model
+  - Performance analysis and limitations
+  - Data gaps and future improvements
+  - Production considerations
+
+---
+
+### `requirements.txt`
+Lists all Python dependencies required to reproduce the results, including:
+- pandas
+- numpy
+- scikit-learn
+- catboost
+- fastapi
+- uvicorn
+- shap (for interpretability)
+
+---
+
+## Setup Instructions
+
+### 1. Create and activate virtual environment (recommended)
 
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\activate
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
 source .venv/bin/activate
-
+2. Install dependencies
 pip install -r requirements.txt
-```
+Model Training
+To train the model and generate artifacts:
 
-## 2) Train the model
+python -m src.model train \
+  --csv dataset/raw/transactions-2025-03-21.csv \
+  --out models/trained_model.pkl \
+  --reports reports
+This will:
 
-Place your CSV in the repo (or provide an absolute path). Then:
+Train the model
 
-```bash
-python -m src.model --train --csv path/to/transactions.csv --out models/trained_model.joblib
-```
+Save the trained model to models/trained_model.pkl
 
-Training details:
-- Leak-safe **time-based split** by the last 7 unique days (test) and the 7 days before that (validation).
-- Trains in **log-space** (`log1p(TRANS_VALUE)`), then converts predictions back to raw currency.
-- Uses **segmented CatBoost** models:
-  - `MAIN`: all property types except `Land`
-  - `LAND`: only `Land`
+Generate evaluation metrics and feature importance
 
-## 3) Run the FastAPI service (bonus)
-
-```bash
+Running the API (Bonus)
 uvicorn src.api:app --reload
-```
+Health check: http://127.0.0.1:8000/health
 
-Health check:
-- `GET /health`
+Swagger UI: http://127.0.0.1:8000/docs
 
-Predict:
-- `POST /api/v1/predict-price`
-
-Example JSON body:
-
-```json
-{
-  "property_type": "Apartment",
-  "property_subtype": "Flat",
-  "area": "Marina District",
-  "actual_area": 1200,
-  "rooms": "2",
-  "parking": "1",
-  "is_offplan": false,
-  "is_freehold": true,
-  "usage": "Residential",
-  "nearest_metro": "Central Station",
-  "nearest_mall": "City Mall",
-  "nearest_landmark": "Harbor",
-  "master_project": "Marina Development",
-  "project": "Marina Residence"
-}
-```
-
-Notes:
-- The API returns a simple 95% **confidence interval** computed in log-space using validation residuals.
-- `key_factors` uses CatBoost SHAP contributions for the single request row (top 3 features).
-
-## 4) How to use your notebook
-
-Your original notebook is copied to `notebooks/analysis.ipynb`.
-Keep it as the main analysis/EDA deliverable.
-
-## 5) What you still need to fill
-
-- Update `REPORT.md` with your results/plots and business insights.
-- If your CSV uses different category labels (e.g., `IS_OFFPLAN_EN` values), adjust the mapping in `src/api.py`.

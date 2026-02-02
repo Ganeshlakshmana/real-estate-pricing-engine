@@ -8,3 +8,6 @@ uvicorn[standard]
 pydantic
 matplotlib
 shap
+jinja2
+python-multipart
+uvicorn[standard]

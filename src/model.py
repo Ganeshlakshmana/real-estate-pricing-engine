@@ -1,4 +1,4 @@
-# src/model.py
+
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,6 @@ from .config import (
 from .preprocessing import load_csv, basic_clean, time_split_last_days, add_features
 
 
-# ---------- metrics (same style as notebook) ----------
 def mape(y_true, y_pred):
     y_true = np.asarray(y_true); y_pred = np.asarray(y_pred)
     denom = np.maximum(np.abs(y_true), 1e-6)
@@ -44,7 +43,7 @@ def eval_metrics_log(y_true_log, y_pred_log):
     return out
 
 
-# ---------- priors (EXACT notebook naming + logic) ----------
+# naming + logic
 def add_agg_features(train_df, apply_df, group_cols, target_col=TARGET_COL):
     tr = train_df.copy()
     tr["_ylog"] = np.log1p(tr[target_col].astype(float))
@@ -70,7 +69,7 @@ def add_agg_features(train_df, apply_df, group_cols, target_col=TARGET_COL):
     return out
 
 
-# ---------- build XY (EXACT notebook) ----------
+# build XY
 def build_xy(df_):
     X = df_.drop(columns=[c for c in DROP_COLS if c in df_.columns], errors="ignore").copy()
     y_raw = df_[TARGET_COL].astype(float).values
@@ -112,15 +111,15 @@ def clean_for_tree(X_train, X_val, X_test):
 
 
 def train_segment_models(df: pd.DataFrame, reports_dir: str):
-    # ---- exact notebook split ----
+    # split
     train_df, val_df, test_df = time_split_last_days(df, test_days=7, val_days=7)
 
-    # ---- exact notebook features ----
+    # features
     train_df = add_features(train_df)
     val_df   = add_features(val_df)
     test_df  = add_features(test_df)
 
-    # ---- segment ----
+    # segment
     train_land = train_df[train_df[SEGMENT_COL] == LAND_VALUE].copy()
     val_land   = val_df[val_df[SEGMENT_COL] == LAND_VALUE].copy()
     test_land  = test_df[test_df[SEGMENT_COL] == LAND_VALUE].copy()
@@ -129,13 +128,13 @@ def train_segment_models(df: pd.DataFrame, reports_dir: str):
     val_main   = val_df[val_df[SEGMENT_COL] != LAND_VALUE].copy()
     test_main  = test_df[test_df[SEGMENT_COL] != LAND_VALUE].copy()
 
-    # ---- MAIN priors (exact order) ----
+    # MAIN priors
     for cols, _name in AGG_SPECS:
         train_main = add_agg_features(train_main, train_main, cols)
         val_main   = add_agg_features(train_main, val_main, cols)
         test_main  = add_agg_features(train_main, test_main, cols)
 
-    # ---- build/clean MAIN ----
+    # build/clean MAIN
     X_train_m, y_train_m_raw, y_train_m = build_xy(train_main)
     X_val_m,   y_val_m_raw,   y_val_m   = build_xy(val_main)
     X_test_m,  y_test_m_raw,  y_test_m  = build_xy(test_main)
@@ -151,7 +150,7 @@ def train_segment_models(df: pd.DataFrame, reports_dir: str):
         use_best_model=True
     )
 
-    # ---- build/clean LAND ----
+    # build/clean LAND
     X_train_l, y_train_l_raw, y_train_l = build_xy(train_land)
     X_val_l,   y_val_l_raw,   y_val_l   = build_xy(val_land)
     X_test_l,  y_test_l_raw,  y_test_l  = build_xy(test_land)
@@ -167,7 +166,7 @@ def train_segment_models(df: pd.DataFrame, reports_dir: str):
         use_best_model=True
     )
 
-    # ---- evaluate EXACT (log metrics + original MAE etc) ----
+    # evaluate log metrics + original MAE etc
     metrics = {"MAIN": {}, "LAND": {}}
 
     pred_val_m_log  = main_model.predict(X_val_m)
@@ -198,15 +197,14 @@ def train_segment_models(df: pd.DataFrame, reports_dir: str):
         "segment_col": SEGMENT_COL,
         "land_value": LAND_VALUE,
 
-        # schema + cleaning info needed for API inference
+        # schema + cleaning info for API inference
         "feature_cols_main": X_train_m.columns.tolist(),
         "feature_cols_land": X_train_l.columns.tolist(),
         "cat_cols_main": cat_cols_m,
         "cat_cols_land": cat_cols_l,
         "num_median_main": med_m.to_dict(),
         "num_median_land": med_l.to_dict(),
-
-        "agg_specs": [cols for cols, _ in AGG_SPECS],  # recipe
+        "agg_specs": [cols for cols, _ in AGG_SPECS],
         "models": {"main": main_model, "land": land_model},
         "metrics": metrics,
     }
@@ -228,8 +226,8 @@ def main():
         bundle = train_segment_models(df, reports_dir=args.reports)
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
         joblib.dump(bundle, args.out)
-        print(f"✅ Saved model -> {args.out}")
-        print(f"✅ Metrics -> {args.reports}/metrics.json")
+        print(f" Saved model -> {args.out}")
+        print(f" Metrics -> {args.reports}/metrics.json")
 
     else:
         bundle = joblib.load(args.out)

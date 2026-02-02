@@ -1,4 +1,4 @@
-# src/preprocessing.py
+
 from __future__ import annotations
 import pandas as pd
 import numpy as np
@@ -13,7 +13,6 @@ def load_csv(csv_path: str) -> pd.DataFrame:
 
 def basic_clean(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Mirror notebook behavior:
     - require DATE_COL and TARGET_COL
     - do NOT pre-fill categorical NaNs (because missing flags use isna())
     """
@@ -23,7 +22,6 @@ def basic_clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def time_split_last_days(df: pd.DataFrame, test_days: int = 7, val_days: int = 7):
     """
-    EXACT notebook split:
     - sort by INSTANCE_DATE
     - DATE = dt.date
     - test = last 7 unique days
@@ -63,7 +61,6 @@ def parse_parking(x):
 
 def add_features(d: pd.DataFrame) -> pd.DataFrame:
     """
-    EXACT notebook add_features():
     - numeric coercion for ACTUAL_AREA / PROCEDURE_AREA
     - ROOMS_COUNT / PARKING_COUNT parsing
     - AREA_RATIO

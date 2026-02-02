@@ -1,8 +1,6 @@
 # data & artifacts
 data/raw/
 data/processed/
-models/
-reports/
 
 # env / cache
 .venv/

@@ -1,0 +1,214 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Real Estate Price Predictor</title>
+    <style>
+        body {
+            font-family: system-ui;
+            max-width: 980px;
+            margin: 40px auto;
+            padding: 0 16px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 6px;
+        }
+
+        button {
+            margin-top: 18px;
+            padding: 10px 14px;
+            cursor: pointer;
+        }
+
+        .card {
+            margin-top: 18px;
+            padding: 14px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+        }
+
+        .full {
+            grid-column: 1 / -1;
+        }
+
+        .hint {
+            color: #666;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Real Estate Price Predictor</h1>
+    <p class="hint">
+        Dropdown values come from <code>reports/choices.json</code> (generated from your dataset).
+    </p>
+
+    <form method="post" action="/predict-form">
+        <div class="grid">
+            <div>
+                <label>Property Type *</label>
+                <select name="property_type" required>
+                    <option value="">-- Select --</option>
+                    {% for v in choices.get("property_type", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Property Subtype</label>
+                <select name="property_subtype">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("property_subtype", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Area *</label>
+                <select name="area" required>
+                    <option value="">-- Select --</option>
+                    {% for v in choices.get("area", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Actual Area *</label>
+                <input name="actual_area" type="number" step="0.01" required />
+            </div>
+
+            <div>
+                <label>Rooms</label>
+                <input name="rooms" type="number" step="1" min="0" />
+                <div class="hint">Use 0 for studio if applicable.</div>
+            </div>
+
+            <div>
+                <label>Parking</label>
+                <input name="parking" type="number" step="1" min="0" />
+            </div>
+
+            <div>
+                <label>Offplan?</label>
+                <select name="is_offplan">
+                    <option value="">(unknown)</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Freehold?</label>
+                <select name="is_freehold">
+                    <option value="">(unknown)</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Usage</label>
+                <select name="usage">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("usage", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Nearest Metro</label>
+                <select name="nearest_metro">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("nearest_metro", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Nearest Mall</label>
+                <select name="nearest_mall">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("nearest_mall", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Nearest Landmark</label>
+                <select name="nearest_landmark">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("nearest_landmark", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Project</label>
+                <select name="project">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("project", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label>Master Project</label>
+                <select name="master_project">
+                    <option value="">(optional)</option>
+                    {% for v in choices.get("master_project", []) %}
+                    <option value="{{ v }}">{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="full">
+                <label>Instance Date (YYYY-MM-DD)</label>
+                <input name="instance_date" placeholder="leave empty for today" />
+            </div>
+        </div>
+
+        <button type="submit">Predict</button>
+    </form>
+
+    {% if result %}
+    <div class="card">
+        <h2>Result</h2>
+        <p><b>Predicted price:</b> {{ result.predicted_price }}</p>
+        <p><b>Confidence interval:</b> {{ result.confidence_interval.lower }} — {{ result.confidence_interval.upper }}
+        </p>
+        <p><b>Price per sqft:</b> {{ result.price_per_sqft }}</p>
+        <p><b>Model confidence:</b> {{ result.model_confidence }}</p>
+        <p><b>Segment used:</b> {{ result.segment_used }}</p>
+        <p><b>Key factors:</b> {{ result.key_factors }}</p>
+    </div>
+    {% endif %}
+</body>
+
+</html>

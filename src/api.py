@@ -1,21 +1,28 @@
-# src/api.py
 from __future__ import annotations
 
 import os
 import re
+import json
 from datetime import date as _date
+
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 
 MODEL_PATH = os.getenv("MODEL_PATH", "models/trained_model.pkl")
 
 app = FastAPI(title="Real Estate Price Engine", version="1.0.0")
+templates = Jinja2Templates(directory="src/templates")
 
-# ---- Request schema (challenge-style) ----
+
+# ----------------------------
+# Request schema
+# ----------------------------
 class PredictRequest(BaseModel):
     property_type: str
     property_subtype: str | None = None
@@ -33,6 +40,7 @@ class PredictRequest(BaseModel):
     master_project: str | None = None
     instance_date: str | None = Field(None, description="YYYY-MM-DD (defaults to today)")
 
+
 class PredictResponse(BaseModel):
     predicted_price: float
     confidence_interval: dict
@@ -44,6 +52,7 @@ class PredictResponse(BaseModel):
 
 BUNDLE = None
 FEATURE_IMPORTANCE = None
+CHOICES: dict = {}
 
 
 def _load_feature_importance():
@@ -58,6 +67,21 @@ def _load_feature_importance():
     return None
 
 
+def _load_choices():
+    """
+    Loads dropdown options from reports/choices.json.
+    If file missing, return empty dict (form will fallback to text input option below if needed).
+    """
+    path = "reports/choices.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
 def parse_rooms(x):
     if x is None:
         return np.nan
@@ -67,6 +91,7 @@ def parse_rooms(x):
     m = re.search(r"(\d+)", s)
     return float(m.group(1)) if m else np.nan
 
+
 def parse_parking(x):
     if x is None:
         return np.nan
@@ -75,13 +100,6 @@ def parse_parking(x):
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Same engineered features as notebook:
-    - ROOMS_COUNT / PARKING_COUNT
-    - AREA_RATIO
-    - MONTH/DOW + cyclical encoding
-    - missing flags for key columns (isna)
-    """
     df = df.copy()
 
     df["ACTUAL_AREA"] = pd.to_numeric(df.get("ACTUAL_AREA"), errors="coerce")
@@ -96,10 +114,10 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df["MONTH"] = df["INSTANCE_DATE"].dt.month.fillna(1).astype(int)
     df["DOW"] = df["INSTANCE_DATE"].dt.dayofweek.fillna(0).astype(int)
 
-    df["MONTH_SIN"] = np.sin(2*np.pi*df["MONTH"]/12)
-    df["MONTH_COS"] = np.cos(2*np.pi*df["MONTH"]/12)
-    df["DOW_SIN"] = np.sin(2*np.pi*df["DOW"]/7)
-    df["DOW_COS"] = np.cos(2*np.pi*df["DOW"]/7)
+    df["MONTH_SIN"] = np.sin(2 * np.pi * df["MONTH"] / 12)
+    df["MONTH_COS"] = np.cos(2 * np.pi * df["MONTH"] / 12)
+    df["DOW_SIN"] = np.sin(2 * np.pi * df["DOW"] / 7)
+    df["DOW_COS"] = np.cos(2 * np.pi * df["DOW"] / 7)
 
     for c in ["NEAREST_METRO_EN", "NEAREST_MALL_EN", "NEAREST_LANDMARK_EN", "PROJECT_EN"]:
         if c in df.columns:
@@ -115,11 +133,6 @@ def _choose_segment(row: dict) -> str:
 
 
 def _apply_bundle_cleaning(X: pd.DataFrame, segment: str) -> pd.DataFrame:
-    """
-    Reproduce training-time cleaning:
-    - cat cols filled with '__MISSING__'
-    - numeric columns coerced + filled with train medians (saved in bundle)
-    """
     X = X.copy()
 
     if segment == "MAIN":
@@ -129,7 +142,7 @@ def _apply_bundle_cleaning(X: pd.DataFrame, segment: str) -> pd.DataFrame:
         cat_cols = BUNDLE.get("cat_cols_land", [])
         med = BUNDLE.get("num_median_land", {})
 
-    # Fill cats
+    # Fill categorical
     for c in cat_cols:
         if c in X.columns:
             X[c] = X[c].fillna("__MISSING__").astype(str)
@@ -142,8 +155,8 @@ def _apply_bundle_cleaning(X: pd.DataFrame, segment: str) -> pd.DataFrame:
         X[c] = pd.to_numeric(X[c], errors="coerce")
         fill_val = med.get(c, np.nan)
         if pd.isna(fill_val):
-            # fallback if median missing
-            fill_val = float(np.nanmedian(X[c].values)) if np.isfinite(np.nanmedian(X[c].values)) else 0.0
+            med_val = np.nanmedian(X[c].values)
+            fill_val = float(med_val) if np.isfinite(med_val) else 0.0
         X[c] = X[c].fillna(fill_val)
 
     return X
@@ -151,21 +164,93 @@ def _apply_bundle_cleaning(X: pd.DataFrame, segment: str) -> pd.DataFrame:
 
 @app.on_event("startup")
 def startup():
-    global BUNDLE, FEATURE_IMPORTANCE
+    global BUNDLE, FEATURE_IMPORTANCE, CHOICES
+
     if not os.path.exists(MODEL_PATH):
         raise RuntimeError(
             f"Model file not found: {MODEL_PATH}. "
             f"Train first: python -m src.model train --csv <path> --out {MODEL_PATH}"
         )
+
     BUNDLE = joblib.load(MODEL_PATH)
     FEATURE_IMPORTANCE = _load_feature_importance()
+    CHOICES = _load_choices()
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": BUNDLE is not None, "model_path": MODEL_PATH}
+    return {
+        "status": "ok",
+        "model_loaded": BUNDLE is not None,
+        "model_path": MODEL_PATH,
+        "choices_loaded": bool(CHOICES),
+    }
 
 
+# ----------------------------
+# HTML UI routes
+# ----------------------------
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "result": None, "choices": CHOICES},
+    )
+
+
+def _to_bool(v: str | None):
+    if v is None or v == "":
+        return None
+    return v.lower() == "true"
+
+
+@app.post("/predict-form", response_class=HTMLResponse)
+def predict_form(
+    request: Request,
+    property_type: str = Form(...),
+    property_subtype: str = Form(None),
+    area: str = Form(...),
+    actual_area: float = Form(...),
+    rooms: int = Form(None),
+    parking: int = Form(None),
+    is_offplan: str = Form(None),
+    is_freehold: str = Form(None),
+    usage: str = Form(None),
+    nearest_metro: str = Form(None),
+    nearest_mall: str = Form(None),
+    nearest_landmark: str = Form(None),
+    project: str = Form(None),
+    master_project: str = Form(None),
+    instance_date: str = Form(None),
+):
+    req = PredictRequest(
+        property_type=property_type,
+        property_subtype=property_subtype or None,
+        area=area,
+        actual_area=float(actual_area),
+        rooms=rooms,
+        parking=parking,
+        is_offplan=_to_bool(is_offplan),
+        is_freehold=_to_bool(is_freehold),
+        usage=usage or None,
+        nearest_metro=nearest_metro or None,
+        nearest_mall=nearest_mall or None,
+        nearest_landmark=nearest_landmark or None,
+        project=project or None,
+        master_project=master_project or None,
+        instance_date=instance_date or None,
+    )
+
+    result = predict(req)
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "result": result, "choices": CHOICES},
+    )
+
+
+# ----------------------------
+# JSON API route (original)
+# ----------------------------
 @app.post("/api/v1/predict-price", response_model=PredictResponse)
 def predict(req: PredictRequest):
     if BUNDLE is None:
@@ -173,7 +258,6 @@ def predict(req: PredictRequest):
 
     inst_date = req.instance_date or str(_date.today())
 
-    # Map API request -> training column names
     row = {
         "PROP_TYPE_EN": req.property_type,
         "PROP_SB_TYPE_EN": req.property_subtype or None,
@@ -191,7 +275,6 @@ def predict(req: PredictRequest):
         "MASTER_PROJECT_EN": req.master_project or None,
         "INSTANCE_DATE": inst_date,
 
-        # Present in dataset but not always in API
         "GROUP_EN": None,
         "PROCEDURE_EN": None,
         "PROCEDURE_AREA": None,
@@ -202,8 +285,6 @@ def predict(req: PredictRequest):
     }
 
     df = pd.DataFrame([row])
-
-    # Add engineered features
     df = add_features(df)
 
     segment = _choose_segment(row)
@@ -218,7 +299,6 @@ def predict(req: PredictRequest):
     if not feature_cols:
         raise HTTPException(status_code=500, detail="Model bundle missing feature columns. Retrain.")
 
-    # Ensure schema exists
     for c in feature_cols:
         if c not in df.columns:
             df[c] = np.nan
@@ -226,7 +306,6 @@ def predict(req: PredictRequest):
     X = df[feature_cols].copy()
     X = _apply_bundle_cleaning(X, segment)
 
-    # Predict (log space)
     try:
         pred_log = float(model.predict(X)[0])
     except Exception as e:
@@ -234,20 +313,18 @@ def predict(req: PredictRequest):
 
     pred_price = float(np.expm1(pred_log))
 
-    # Simple CI from validation RMSE_log in bundle (if present)
     sigma = 0.65
     try:
         sigma = float(BUNDLE["metrics"][segment]["val"]["RMSE_log"])
     except Exception:
         pass
+
     z = 1.96
     lower = float(np.expm1(pred_log - z * sigma))
     upper = float(np.expm1(pred_log + z * sigma))
 
-    # Confidence label
     conf = "high" if sigma < 0.35 else "medium" if sigma < 0.60 else "low"
 
-    # key factors (from feature_importance.csv if present)
     if FEATURE_IMPORTANCE is not None:
         key_factors = FEATURE_IMPORTANCE["feature"].head(5).astype(str).tolist()
     else:
@@ -261,5 +338,5 @@ def predict(req: PredictRequest):
         price_per_sqft=ppsf,
         model_confidence=conf,
         key_factors=key_factors,
-        segment_used=segment
+        segment_used=segment,
     )
