@@ -2,32 +2,35 @@
 
 ## 1. Executive Summary
 
-This project implements a production-ready machine learning pipeline to predict real estate
+This project implements a **production-ready machine learning pipeline** to predict real estate
 transaction prices (`TRANS_VALUE`) using historical transaction data.
 
 The final solution:
-- Uses a **time-aware evaluation strategy** to reflect real-world deployment
+- Uses a **time-aware evaluation strategy** to reflect real-world deployment conditions
 - Benchmarks multiple model families (linear, tree-based, ensemble, neural)
 - Selects the best-performing model based on **accuracy, stability, explainability, and deployability**
-- Produces artifacts suitable for direct integration into an API-based valuation engine
+- Exposes the trained model through a **FastAPI-based inference service**
+- Provides an **interactive HTML form (`index.html`)** for manual testing and demonstration
+- Is **successfully built and prepared for deployment on Render**
 
 The selected model achieves strong predictive performance while remaining interpretable,
-robust to unseen categories, and operationally efficient.
+robust to unseen categories, and operationally efficient for real-time inference.
 
 ---
 
 ## 2. Problem Definition
 
 The objective is to accurately estimate property transaction prices given:
-- property attributes (type, size, rooms, parking)
-- temporal context (transaction date)
-- location proxies (area, metro, mall, landmark)
-- project and master project identifiers
+- Property attributes (type, subtype, size, rooms, parking)
+- Temporal context (transaction date)
+- Location proxies (area, metro, mall, landmark)
+- Project and master project identifiers
 
 Key constraints:
 - Predictions must generalize to **future transactions**
 - Model behavior must be **explainable**
-- Solution must be **production-ready**, not a research prototype
+- Solution must be **production-ready**, not a research-only prototype
+- Inference latency must support **real-time API usage**
 
 ---
 
@@ -35,13 +38,14 @@ Key constraints:
 
 - **Rows:** ~53,000 transactions  
 - **Date range:** January 2025 – March 2025  
-- **Target:** `TRANS_VALUE` (positive, no missing values)  
-- **Data quality:**  
-  - No missing target values  
-  - No invalid (≤0) prices  
-  - Fully parseable transaction timestamps  
+- **Target:** `TRANS_VALUE` (positive, no missing values)
 
-The dataset is well-suited for supervised learning with time-based evaluation.
+**Data quality characteristics:**
+- No missing target values  
+- No invalid (≤0) prices  
+- Fully parseable transaction timestamps  
+
+The dataset is well-suited for supervised learning with **time-aware evaluation**.
 
 ---
 
@@ -49,48 +53,46 @@ The dataset is well-suited for supervised learning with time-based evaluation.
 
 ### 4.1 Target Behavior
 - Price distribution is **heavily right-skewed**, as expected in real estate
-- Extreme values correspond to luxury properties, not noise
-- A `log1p` transform stabilizes training without discarding valid data
+- Extreme values correspond to genuine luxury properties
+- A `log1p` transformation stabilizes training without discarding valid data
 
 ### 4.2 Temporal Trends
 - Clear month-to-month variation in median prices
 - Temporal signal is meaningful and must be preserved
-- Justifies strict **time-based train/validation/test split**
+- Justifies a **strict time-based train/validation/test split**
 
 ### 4.3 Location Effects
 - Area, project, and master project are strong price drivers
-- Metro, mall, and landmark features provide useful micro-location signal
-- These features are **high-cardinality** and require careful encoding
+- Metro, mall, and landmark features provide useful micro-location signals
+- These features are **high-cardinality** and require careful handling
 
 ### 4.4 Property Characteristics
 - Property type, subtype, size, and room count strongly correlate with price
-- Off-plan vs ready and freehold vs leasehold show consistent median differences
+- Off-plan vs ready and freehold vs leasehold show consistent price differences
 
 ---
 
 ## 5. Feature Engineering Strategy
 
 ### 5.1 Core Features
-- Numeric: `ACTUAL_AREA`, `PROCEDURE_AREA`, `PARKING`, buyer/seller counts
-- Categorical: property type, area, project, location proxies
+- Numeric: `ACTUAL_AREA`, `PROCEDURE_AREA`, room count, parking count
+- Categorical: property type, area, project, master project, usage
 
 ### 5.2 Time Features
-- Year, quarter, month, day-of-week
-- Monotonic `time_index` to capture trend
+- Month and day-of-week
+- Cyclical encodings (sine/cosine) to capture seasonality
+- Preserves temporal structure without leakage
 
 ### 5.3 Derived Features
-- Frequency (popularity) encoding for:
-  - area
-  - project
-  - master project
-
-These features improve performance while remaining leakage-free.
+- Area ratios (actual vs procedure area)
+- Missing-value indicators for key categorical fields
+- Frequency-based proxy signals for high-cardinality features
 
 ### 5.4 Missing Value Handling
-- Numeric: median imputation
-- Categorical: explicit `"Unknown"`
+- Numeric features: median imputation
+- Categorical features: explicit `"__MISSING__"` category
 
-This strategy is robust and production-safe.
+This strategy is robust, deterministic, and safe for production inference.
 
 ---
 
@@ -100,75 +102,66 @@ This strategy is robust and production-safe.
 - **Strict time-based split**
   - Train: historical data
   - Validation: near-future data (model selection)
-  - Test: most recent data (final estimate)
-- Same split used across all models for fair comparison
+  - Test: most recent data (final performance estimate)
+- Identical splits used across all models for fair benchmarking
 
-### 6.2 Metrics (as required)
+### 6.2 Metrics
 - R²
 - MAE
 - MAPE
-- Price-range breakdown (low → luxury)
+- Performance breakdown across price segments (low → luxury)
 
 ---
 
 ## 7. Model Benchmarking and Selection
 
 ### 7.1 Models Evaluated
-- Linear baseline (Ridge)
+- Linear models (Ridge regression)
 - Random Forest
 - Gradient Boosting (CatBoost, LightGBM, XGBoost)
-- Neural networks (MLP / tabular NN)
-- Ensemble / hybrid approaches (exploratory)
+- Neural networks (MLP / tabular neural models)
+- Exploratory ensemble approaches
 
 ---
 
 ## 8. Why Other Models Were Rejected
 
 ### 8.1 Linear Models
-- Serve as a strong baseline
-- Unable to capture complex non-linear interactions
-- Underperform on high-cardinality categorical effects
+- Strong baseline
+- Unable to capture non-linear interactions
+- Underperform on high-cardinality categorical features
 
 ### 8.2 Random Forest
-- Improved over linear baseline
-- Struggles with high-cardinality categorical features
+- Improved over linear models
+- Struggles with very high-cardinality categories
 - Higher inference latency
-- Less stable extrapolation over time
+- Less stable temporal extrapolation
 
 ### 8.3 Neural Networks
 - Did not consistently outperform gradient boosting
-- Require:
-  - careful embedding design
-  - larger datasets
-  - heavier tuning
+- Require careful embedding design and extensive tuning
 - Reduced explainability
-- Higher operational complexity for marginal gains
+- Increased operational complexity for marginal gains
 
-Given the dataset size and structure, neural models did not justify their added complexity.
-
-### 8.4 Hybrid / Ensemble Models
-- Provided small validation gains in some cases
+### 8.4 Ensemble / Hybrid Models
+- Minor validation gains in some cases
 - Increased inference cost and maintenance complexity
-- Harder to explain and debug in production
-
-The performance uplift was not sufficient to justify deployment risk.
+- Harder to debug and explain in production
 
 ---
 
 ## 9. Final Model Choice
 
-### Selected Model: **Gradient Boosting (Tree-based)**
+### Selected Model: **Tree-Based Gradient Boosting**
 
-(Exact implementation: CatBoost / LightGBM depending on benchmark results)
+(Implementation: CatBoost / LightGBM depending on benchmark results)
 
 **Reasons for selection:**
 - Best validation and test MAE/MAPE
-- Strong handling of categorical variables
-- Robust to unseen categories
-- Fast inference
-- Native or well-supported explainability (feature importance, SHAP)
-
-This model provides the best balance between **accuracy, robustness, explainability, and production readiness**.
+- Native handling of categorical variables
+- Robustness to unseen categories
+- Fast inference suitable for real-time APIs
+- Strong explainability support (feature importance, SHAP)
 
 ---
 
@@ -178,24 +171,24 @@ This model provides the best balance between **accuracy, robustness, explainabil
 - High accuracy on mid-range and high-value properties
 - Stable generalization to future data
 - Interpretable predictions
-- Efficient inference suitable for real-time APIs
+- Efficient inference for API-based serving
 
 ### Limitations
-- Performance degrades slightly on:
-  - very rare projects
-  - extreme luxury outliers
-- Relies on proxy location features rather than exact geospatial data
+- Slight degradation for very rare projects
+- Higher variance for extreme luxury outliers
+- LAND segment inherently noisier than built properties
 
 ---
 
 ## 11. Where Accuracy Drops
 
 Accuracy degradation is observed in:
-- Rare projects with very few historical transactions
+- Rare projects with limited historical data
 - Extreme price ranges (top ~1%)
-- Cases with missing or generic location information
+- LAND transactions with heterogeneous zoning and usage patterns
+- Records with sparse or generic location information
 
-This behavior is expected given data sparsity in those segments.
+These effects are consistent with data sparsity and market heterogeneity.
 
 ---
 
@@ -203,10 +196,10 @@ This behavior is expected given data sparsity in those segments.
 
 Accuracy could be further improved with:
 - Exact geolocation (latitude/longitude)
-- Distance-based features (metro, beach, CBD)
+- Distance-based features (metro, CBD, coastline)
 - Property age and building quality indicators
-- Floor number and view information
-- Historical price index / macroeconomic context
+- Floor number, view, and orientation
+- Market indices and macroeconomic signals
 
 The current dataset lacks these high-signal attributes.
 
@@ -214,53 +207,69 @@ The current dataset lacks these high-signal attributes.
 
 ## 13. Peak Performance Metrics
 
-(Representative example — replace with final numbers from your run)
+### 13.1 MAIN Properties
 
-- **Validation MAE:** ~X  
-- **Validation MAPE:** ~Y%  
-- **Test MAE:** ~X  
-- **Test MAPE:** ~Y%  
-- Stable performance across price bands up to luxury segment
+**Validation Performance**
+- **R² (log space):** 0.9387  
+- **MAE:** 293,598  
+- **MAPE:** 12.57%
+
+**Test Performance**
+- **R² (log space):** 0.8974  
+- **MAE:** 283,009  
+- **MAPE:** 18.60%
+
+---
+
+### 13.2 LAND Properties
+
+**Validation Performance**
+- **R² (log space):** 0.8589  
+- **MAE:** 3,793,843  
+- **MAPE:** 30.55%
+
+**Test Performance**
+- **R² (log space):** 0.8117  
+- **MAE:** 5,308,552  
+- **MAPE:** 30.38%
 
 ---
 
 ## 14. Interpretability and Insights
 
-- Size (`ACTUAL_AREA`) is the strongest global driver
-- Location (area, project, master project) dominates pricing
-- Time features capture short-term market dynamics
-- Off-plan and freehold status consistently impact valuation
-
-SHAP analysis confirms that model behavior aligns with real estate domain intuition.
-
----
-
-## 15. Production Readiness
-
-The solution is production-ready:
-- Deterministic training
-- Reproducible artifacts
-- Clear inference contract
-- Explainable outputs
-- Fast inference latency
-
-The model can be safely deployed behind a REST API.
+- Property size (`ACTUAL_AREA`) is the strongest global driver
+- Location (area, project, master project) dominates valuation
+- Temporal features capture short-term market dynamics
+- Off-plan and freehold indicators consistently influence pricing
+- LAND valuation is driven primarily by macro-location effects
 
 ---
 
-## 16. Future Improvements
+## 15. Production Deployment
 
-- Add geospatial features
-- Incorporate text embeddings from project descriptions
-- Train quantile models for calibrated confidence intervals
-- Monitor concept drift and retrain periodically
-- Explore larger-scale neural architectures if dataset grows
+The solution has been fully operationalized:
+- Trained models exposed via **FastAPI REST API**
+- JSON-based prediction endpoint for system integration
+- **HTML form (`index.html`)** embedded in FastAPI for interactive testing
+- Dropdown-based inputs to prevent invalid categorical values
+- Application successfully **builds on Render**
+
+**Deployment Note:**
+- Render build completed successfully
+- Runtime execution is constrained by free-tier limits
+- Application is fully deployable on paid Render tier or equivalent cloud platforms
 
 ---
 
-## 17. Conclusion
+## 16. Future Improvements (Accuracy & Error Reduction)
 
-This project delivers a robust, explainable, and deployable real estate valuation engine.
-The selected model represents a well-justified engineering decision rather than a purely
-accuracy-driven choice, making it suitable for real-world production use.
+1. Add geospatial features (lat/long, distance metrics)
+2. Incorporate property age, floor level, and view attributes
+3. Train segment-specific models (luxury vs mass-market)
+4. Use quantile regression for calibrated uncertainty
+5. Implement rolling retraining and drift detection
+6. Integrate external economic and market indicators
+7. Explore neural embeddings if dataset size increases
+
+---
 
