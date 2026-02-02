@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: real-estate-price-engine
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      python src/scripts/build_choices.py
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker src.api:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: MODEL_PATH
+        value: models/trained_model.pkl
