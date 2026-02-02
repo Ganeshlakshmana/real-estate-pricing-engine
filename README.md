@@ -82,10 +82,6 @@ Notes:
 
 ## 4) How to use your notebook
 
-Your original notebook is copied to `notebooks/analysis.ipynb`.
+original notebook is copied to `notebooks/analysis.ipynb`.
 Keep it as the main analysis/EDA deliverable.
 
-## 5) What you still need to fill
-
-- Update `REPORT.md` with your results/plots and business insights.
-- If your CSV uses different category labels (e.g., `IS_OFFPLAN_EN` values), adjust the mapping in `src/api.py`.
