@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+catboost
+joblib
+fastapi
+uvicorn[standard]
+pydantic
+matplotlib
+shap
