@@ -130,3 +130,39 @@ Health check: http://127.0.0.1:8000/health
 
 Swagger UI: http://127.0.0.1:8000/docs
 
+<<<<<<< HEAD
+=======
+Predict:
+- `POST /api/v1/predict-price`
+
+Example JSON body:
+
+```json
+{
+  "property_type": "Apartment",
+  "property_subtype": "Flat",
+  "area": "Marina District",
+  "actual_area": 1200,
+  "rooms": "2",
+  "parking": "1",
+  "is_offplan": false,
+  "is_freehold": true,
+  "usage": "Residential",
+  "nearest_metro": "Central Station",
+  "nearest_mall": "City Mall",
+  "nearest_landmark": "Harbor",
+  "master_project": "Marina Development",
+  "project": "Marina Residence"
+}
+```
+
+Notes:
+- The API returns a simple 95% **confidence interval** computed in log-space using validation residuals.
+- `key_factors` uses CatBoost SHAP contributions for the single request row (top 3 features).
+
+## 4) How to use your notebook
+
+original notebook is copied to `notebooks/analysis.ipynb`.
+Keep it as the main analysis/EDA deliverable.
+
+>>>>>>> 0295e2ff4af62cdf46a057c0c1f86379b66885b8
